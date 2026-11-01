@@ -164,7 +164,7 @@
                     const code = await lobby.host();
                     statusEl.textContent = `Lobby code: ${code}. Waiting for player 2...`;
                 } catch (e) {
-                    statusEl.textContent = 'Could not create lobby: ' + (e.type || e.message);
+                    statusElement.textContent = 'Could not create lobby: ' + (e.type || e.message);
                 }
             };
 
