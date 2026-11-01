@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>Tic-Tac-Toe</title>
+        <link href="https://fonts.googleapis.com/css?family=Antic+Slab" rel="stylesheet">
+        <style>
+            body { font-family: 'Antic Slab', serif; text-align: center; }
+            #board {
+                display: grid;
+                grid-template-columns: repeat(3, 100px);
+                gap: 6px;
+                justify-content: center;
+                margin: 1rem auto;
+            }
+            .cell {
+                width: 100px; height: 100px;
+                font-size: 3rem; font-family: inherit;
+                background: white; border: 2px solid black; cursor: pointer;
+            }
+            .cell:disabled { cursor: default; }
+            .cell.win { background: lightgreen; }
+            #game { display: none; }
+            #rematchBtn { display: none; }
+        </style>
+    </head>
+    <body>
+        <a href="index.html">← Cool Games</a>
+        <h1>Tic-Tac-Toe</h1>
+
+        <div id="menu">
+            <button id="hostBtn">Create lobby</button>
+            <input id="codeInput" placeholder="Enter code" maxlength="5">
+            <button id="joinBtn">Join</button>
+        </div>
+        <p id="status"></p>
+
+        <div id="game">
+            <div id="board"></div>
+            <button id="rematchBtn">Play again</button>
+        </div>
+
+        <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+        <script type="module">
+            import { Lobby } from './lobby.js';
+
+            // 0 1 2
+            // 3 4 5
+            // 6 7 8
+            const WIN_LINES = [
+                [0,1,2], [3,4,5], [6,7,8],
+                [0,3,6], [1,4,7], [2,5,8],
+                [0,4,8], [2,4,6] 
+            ];
+
+            const lobby = new Lobby();
+            const statusElement = document.getElementById('status');
+            const boardElement = document.getElementById('document');
+            const rematchButton = document.getElementById('rematchBtm');
+
+            let role = null; // host or joiner
+            let myMark = null; // X or O
+            let state = newState();
+
+            function newState() {
+                return { board: Array(9).fill(null), turn: 'X', winner: null, line: null };
+            }
+
+            function applyMove(cell, mark) {
+                if (state.winner) return;
+                if (mark !== state.turn) return;
+                if (!Number.isInteger(cell) || cell < 0 || cell > 8) return;
+                if (state.board[cell] !== null) return;
+
+                state.board[cell] = mark;
+
+                const line = WIN_LINES.find(([a,b,c]) =>
+                    state.board[a] && state.board[a] === state.board[b] && state.board[a] ===  state.board[c]
+                );
+
+                if(line) {
+                    state.winner = mark;
+                    state.line = line;
+                } else if (state.board.every(c => c !== null)) {
+                    state.winner = 'draw';
+                } else {
+                    state.turn = mark === 'X' ? 'O' : 'X';
+                }
+                broadcast();
+            }
+
+            function resetGame() {
+                state = newState();
+                broadcast();
+            }
+
+            function broadcast() {
+                lobby.send({ type: 'state', state });
+                render();
+            }
+
+
+
+            lobby.onConnect = () => {
+                document.getElementById('menu').style.display = 'none';
+                document.getElementById('game').style.display = 'block';
+                if (role === 'host') broadcast();   // send the starting board to the guest
+            }
+
+            lobby.onMessage = msg => {
+                if (msg.type === 'state' && role === 'guest') {
+                    state = msg.state;
+                    render();
+                } else if (msg.type === 'move' && role === 'host') {
+                    applyMove(msg.cell, 'O');       // the guest is always O
+                } else if (msg.type === 'rematch' && role === 'host') {
+                    if (state.winner) resetGame();
+                }
+            };
+
+            lobby.onDisconnect = () => {
+                statusEl.textContent = 'The other player left.';
+                boardEl.querySelectorAll('button').forEach(b => b.disabled = true);
+                rematchBtn.style.display = 'none';
+            };
+
+            function onCellClick(cell) {
+                if (state.winner || state.turn !== myMark || state.board[cell] !== null) return;
+                if (role === 'host') applyMove(cell, 'X');
+                else lobby.send({ type: 'move', cell });   // wait for the host's new state
+            }
+
+            rematchBtn.onclick = () => {
+                if (role === 'host') resetGame();
+                else lobby.send({ type: 'rematch' });
+            };
+
+            function render() {
+                boardEl.innerHTML = '';
+                state.board.forEach((mark, i) => {
+                    const btn = document.createElement('button');
+                    btn.className = 'cell';
+                    btn.textContent = mark || '';
+                    btn.disabled = !!mark || !!state.winner || state.turn !== myMark;
+                    if (state.line && state.line.includes(i)) btn.classList.add('win');
+                    btn.onclick = () => onCellClick(i);
+                    boardEl.appendChild(btn);
+                });
+
+                if (state.winner === 'draw') statusEl.textContent = "It's a draw!";
+                else if (state.winner) statusEl.textContent = state.winner === myMark ? 'You win!' : 'You lose.';
+                else statusEl.textContent = state.turn === myMark
+                    ? `Your turn (${myMark})`
+                    : "Opponent's turn...";
+
+                rematchBtn.style.display = state.winner ? 'inline-block' : 'none';
+           }
+
+            document.getElementById('hostBtn').onclick = async () => {
+                role = 'host';
+                myMark = 'X';
+                try {
+                    const code = await lobby.host();
+                    statusEl.textContent = `Lobby code: ${code}. Waiting for player 2...`;
+                } catch (e) {
+                    statusEl.textContent = 'Could not create lobby: ' + (e.type || e.message);
+                }
+            };
+
+            document.getElementById('joinBtn').onclick = async () => {
+                role = 'guest';
+                myMark = 'O';
+                try {
+                    statusEl.textContent = 'Joining...';
+                    await lobby.join(document.getElementById('codeInput').value);
+                } catch (e) {
+                    statusEl.textContent = 'Could not join: ' + (e.type || e.message);
+                }
+            };
+        </script>
+    </body>
+</html>
