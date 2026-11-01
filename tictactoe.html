@@ -120,7 +120,7 @@
             };
 
             lobby.onDisconnect = () => {
-                statusEl.textContent = 'The other player left.';
+                statusElement.textContent = 'The other player left.';
                 boardEl.querySelectorAll('button').forEach(b => b.disabled = true);
                 rematchBtn.style.display = 'none';
             };
@@ -148,9 +148,9 @@
                     boardEl.appendChild(btn);
                 });
 
-                if (state.winner === 'draw') statusEl.textContent = "It's a draw!";
-                else if (state.winner) statusEl.textContent = state.winner === myMark ? 'You win!' : 'You lose.';
-                else statusEl.textContent = state.turn === myMark
+                if (state.winner === 'draw') statusElement.textContent = "It's a draw!";
+                else if (state.winner) statusElement.textContent = state.winner === myMark ? 'You win!' : 'You lose.';
+                else statusElement.textContent = state.turn === myMark
                     ? `Your turn (${myMark})`
                     : "Opponent's turn...";
 
@@ -162,7 +162,7 @@
                 myMark = 'X';
                 try {
                     const code = await lobby.host();
-                    statusEl.textContent = `Lobby code: ${code}. Waiting for player 2...`;
+                    statusElement.textContent = `Lobby code: ${code}. Waiting for player 2...`;
                 } catch (e) {
                     statusElement.textContent = 'Could not create lobby: ' + (e.type || e.message);
                 }
@@ -172,10 +172,10 @@
                 role = 'guest';
                 myMark = 'O';
                 try {
-                    statusEl.textContent = 'Joining...';
+                    statusElement.textContent = 'Joining...';
                     await lobby.join(document.getElementById('codeInput').value);
                 } catch (e) {
-                    statusEl.textContent = 'Could not join: ' + (e.type || e.message);
+                    statusElement.textContent = 'Could not join: ' + (e.type || e.message);
                 }
             };
         </script>
