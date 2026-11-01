@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>Tetris</title>
+        <link href="https://fonts.googleapis.com/css?family=Antic+Slab" rel="stylesheet">
+    </head>
+    <body>
+        <div id="score">0</div>
+        <canvas id="gameCanvas" width="300" height="430"></canvas>
+        <canvas id="nextCanvas" width="120" height="120"></canvas>
+
+        <a href="index.html">Home</a>
+        <style>
+            #gameCanvas {
+                position: absolute;
+                top: 62%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+            }
+            #nextCanvas {
+                position: absolute;
+                top: calc(62% - 210px);
+                left: calc(50% + 170px);
+                border: 1px solid black;
+            }
+            #score {
+                text-align: center;
+                font-size: 60px;
+                font-family: 'Antic Slab', serif;
+            } 
+        </style>
+    </body>
+    <script type="module">
+        import { Block } from './block.js';
+
+        const GAME_SPEED = 500;
+        const CELL = 30;
+        const COLS = 10;
+        const ROWS = 20;
+
+        const nextCanvas = document.getElementById("nextCanvas");
+        const nextCtx = nextCanvas.getContext("2d");
+        const PREVIEW_CELL = 24;
+
+        const CANVAS_BORDER_COLOUR = 'black';
+        const CANVAS_BACKGROUND_COLOUR = "white";
+
+        const LINE_SCORES = [0, 100, 300, 500, 800];
+        const scoreElement = document.getElementById("score");
+
+        let blockNames = [
+            'T_BLOCK', 'J_BLOCK', 'L_BLOCK', 'O_BLOCK', 'S_BLOCK', 'Z_BLOCK', 'I_BLOCK'
+        ];
+        let score = 0;
+
+        const gameCanvas = document.getElementById("gameCanvas");
+        gameCanvas.width = COLS * CELL;
+        gameCanvas.height = ROWS * CELL;
+        const ctx = gameCanvas.getContext("2d");
+
+        const board = Array.from({ length: ROWS }, () => Array(COLS).fill(null));
+        let gameOver = false;
+
+        document.addEventListener("keydown", blockControl);
+
+        let block = null;
+        let nextType = blockNames[randomBlockPicker()];
+
+        spawnBlock(blockNames[randomBlockPicker()]);
+        main();
+
+        function main() {
+            setTimeout(function onTick() {
+                if (gameOver) return;
+
+                if (moveBlock(0, 1)) draw();
+                else landBlock();
+                
+                main();
+            }, GAME_SPEED);
+        }
+
+        function lockBlock() {
+            block.blocks.forEach(part => {
+                board[part.y][part.x] = {
+                    colour: block.colour,
+                    borderColour: block.borderColour
+                };
+            });
+        }
+        
+        function clearCanvas() {
+            //  Select the colour to fill the drawing
+            ctx.fillStyle = CANVAS_BACKGROUND_COLOUR;
+            //  Select the colour for the border of the canvas
+            ctx.strokeStyle = CANVAS_BORDER_COLOUR;
+
+            // Draw a "filled" rectangle to cover the entire canvas
+            ctx.fillRect(0, 0, gameCanvas.width, gameCanvas.height);
+            // Draw a "border" around the entire canvas
+            ctx.strokeRect(0, 0, gameCanvas.width, gameCanvas.height);
+        }
+
+        function clearLines(){
+            let cleared = 0;
+            for (let y = ROWS - 1; y >= 0; y--){
+                if (board[y].every(cell => cell !== null)) {
+                    board.splice(y, 1);
+                    board.unshift(Array(COLS).fill(null));
+                    cleared++;
+                    y++;
+                }
+            }
+            return cleared;
+        }
+        
+        function addScore(lines) {
+            score += LINE_SCORES[lines];
+            scoreElement.textContent = score;
+        }
+
+        function randomBlockPicker() { return Math.floor(Math.random() * 7); } 
+
+        function draw() {
+            clearCanvas();
+            drawBoard();
+            drawGhost();
+            drawBlock(block);
+        }
+
+        function drawBoard() {
+            board.forEach((row, y) => {
+                row.forEach((cell, x) => {
+                    if (!cell) return;
+                    ctx.fillStyle = cell.colour;
+                    ctx.strokeStyle = cell.borderColour;
+                    ctx.fillRect(x * CELL, y * CELL, CELL, CELL);
+                    ctx.strokeRect(x * CELL, y * CELL, CELL, CELL);
+                }); 
+            });
+        }
+
+        function drawBlockPart(blockPart, block) {
+            ctx.fillStyle = block.colour;
+            ctx.strokeStyle = block.borderColour;
+            ctx.fillRect(blockPart.x * CELL, blockPart.y * CELL, CELL, CELL);
+            ctx.strokeRect(blockPart.x * CELL, blockPart.y * CELL, CELL, CELL);  
+        }
+
+        function drawBlock(block) {
+            block.blocks.forEach(part => drawBlockPart(part, block));
+        }
+
+        function drawNext() {
+            nextCtx.clearRect(0, 0, nextCanvas.width, nextCanvas.height);
+
+            const preview = new Block(nextType);
+            const xs = preview.blocks.map(part => part.x);
+            const ys = preview.blocks.map(part => part.y);
+            const minX = Math.min(...xs);
+            const minY = Math.min(...ys);
+            const widthCells = Math.max(...xs) - minX + 1;
+            const heightCells = Math.max(...ys) - minY + 1;
+
+            // pixel offset that centres the piece's bounding box in the canvas
+            const offsetX = (nextCanvas.width - widthCells * PREVIEW_CELL) / 2 - minX * PREVIEW_CELL;
+            const offsetY = (nextCanvas.height - heightCells * PREVIEW_CELL) / 2 - minY * PREVIEW_CELL;
+
+            nextCtx.fillStyle = preview.colour;
+            nextCtx.strokeStyle = preview.borderColour;
+            preview.blocks.forEach(part => {
+                nextCtx.fillRect(part.x * PREVIEW_CELL + offsetX, part.y * PREVIEW_CELL + offsetY, PREVIEW_CELL, PREVIEW_CELL);
+                nextCtx.strokeRect(part.x * PREVIEW_CELL + offsetX, part.y * PREVIEW_CELL + offsetY, PREVIEW_CELL, PREVIEW_CELL);
+            });
+        }
+
+        function spawnBlock() {
+            block = new Block(nextType);
+            nextType = blockNames[randomBlockPicker()];
+            if(!fits(block.blocks)) gameOver = true;
+
+            draw();
+            drawNext();
+
+            // if (!fits(block.blocks)) 
+            // {
+            //     gameOver = true;
+            //     ctx.fillStyle = 'black';
+            //     ctx.font = '40px Antic Slab';
+            //     ctx.textAlign = 'center';
+            //     ctx.fillText('Game Over', gameCanvas.width / 2, gameCanvas.height / 2);
+            // }
+        }
+
+        function fits(parts) {
+            return parts.every(part => 
+                part.x >= 0 && part.x < COLS && 
+                part.y >= 0 && part.y < ROWS &&
+                board[part.y][part.x] === null
+            );
+        }
+
+        function moveBlock(dx, dy) {
+            const moved = block.blocks.map(part => ({ x: part.x + dx, y: part.y + dy }));
+            if (fits(moved)) {
+                block.move(dx, dy);
+                return true;
+            }
+            return false;
+        }
+
+        function rotateBlock() {
+            const rotated = block.rotate();
+            if (fits(rotated)) block.blocks = rotated;
+        }
+
+        function landBlock() {
+            lockBlock();
+            addScore(clearLines());
+            spawnBlock();
+        }
+
+        function hardDrop() {
+            while (moveBlock(0, 1)) {}
+            landBlock();
+        }
+
+        function getGhostParts() {
+            let ghost = block.blocks.map(part => ({ ...part }));
+            
+            while (true) {
+                const next = ghost.map(part => ({ x: part.x, y: part.y + 1 }));
+                if (!fits(next)) break;
+                ghost = next;
+            }
+
+            return ghost;
+        }
+
+        function drawGhost() {
+            ctx.save();
+            ctx.globalAlpha = 0.3;
+            ctx.fillStyle = block.colour; 
+            ctx.strokeStyle = block.borderColour;
+
+            getGhostParts().forEach(part => {
+                ctx.fillRect(part.x * CELL, part.y * CELL, CELL, CELL);
+                ctx.strokeRect(part.x * CELL, part.y * CELL, CELL, CELL);
+            });
+
+            ctx.restore();
+        }
+
+        function blockControl(event) {
+            if (gameOver) return;
+            switch (event.key) {
+                case 'ArrowLeft':
+                    moveBlock(-1, 0);
+                    break;
+                case 'ArrowRight':
+                    moveBlock(1, 0);
+                    break;
+                case 'ArrowDown':
+                    moveBlock(0, 1);
+                    break;
+                case 'ArrowUp':
+                    rotateBlock();
+                    break;
+                case ' ':
+                    if (event.repeat) return;
+                    hardDrop();
+                    break;
+                default:
+                    return;
+            }
+            event.preventDefault();
+            if (!gameOver) draw();
+        }
+    </script>
+</html>
