@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>Capture the Emperor</title>
+        <link href="https://fonts.googleapis.com/css?family=Antic+Slab" rel="stylesheet">
+        <style>
+            body { font-family: 'Antic Slab', serif; text-align: center; }
+            #game { display: none; }
+            #gameCanvas { border: 2px solid black; max-width: 100% }
+        </style>
+    </head>
+    <body>
+        <a href="index.html">Home</a>
+        <h1>Capture the Emperor</h1>
+        
+        <div id="menu">
+            <button id="hostBtn">Create lobby</button>
+            <input id="codeInput" placeholder="Enter code" maxlength="5">
+            <button id="joinBtn">Join</button>
+        </div>
+        <p id="status"></p>
+        
+        <div id="game">
+            <p id="info"></p>
+            <canvas id="gameCanvas"></canvas>
+            <div id="controls">
+                <div id="palette"></div>
+                <button id="randomBtn">Random Fill Up</button>
+                <button id="clearBtn">Clear</button>
+                <button id="readyBtn">Ready</button>
+            </div>
+        </div>
+
+        <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+        <script type="module">
+            import { Lobby } from './lobby.js';
+
+            const COLS = 8;
+            const ROWS = 8;
+            const CELL = 60;
+            
+            let placement = [];
+            let selectedType = null;
+            let sentReady = false;
+            let nextId = 1;
+            
+            const RANKS = ['KING', 'PRINCE', 'ARCHDUKE', 'DUKE', 'COUNT', 'BARON', 'KNIGHT', 'SQUIRE'];
+            const ARMY = {
+                KING: 1, PRINCE: 1, ARCHDUKE: 1, DUKE: 1, COUNT: 1, BARON: 1, KNIGHT: 1, SQUIRE: 8, EMPEROR: 1, ASSASSIN: 2
+            };
+            
+            let state = {
+                phase: 'placement',
+                turn: 0,
+                winner: null,
+                ready: [false, false],
+                units: []
+            };
+
+            const HOME = 3;
+            const TOTAL = Object.values(ARMY).reduce((a, b) => a + b, 0);
+            
+            const GRID_COLOUR = '#555';
+            const BG_COLOUR = 'white';
+            const HOVER_COLOUR = 'rgba(0, 120, 255, 0.25)';
+
+            const canvas = document.getElementById('gameCanvas');
+            canvas.width = COLS * CELL;
+            canvas.height = ROWS * CELL;
+            const ctx = canvas.getContext('2d');
+
+            const myPlayer = () => role === 'host' ? 0 : 1;
+
+            const vy = y => role === 'guest' ? ROWS - 1 - y : y;
+            const phase = () => myView ? myView.phase : 'placement';
+
+            let selectedId = null; 
+
+            let hoverCell = null;
+
+            function drawGrid() {
+                ctx.fillStyle = BG_COLOUR;
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                if (phase() === 'placement') {
+                    ctx.fillStyle = 'rgba(70, 130, 180, 0.12)';
+                    ctx.fillRect(0, (ROWS - HOME) * CELL, canvas.width, HOME * CELL);
+                }
+
+                ctx.strokeStyle = GRID_COLOUR;
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                for (let x = 0; x <= COLS; x++) {
+                    ctx.moveTo(x * CELL + 0.5, 0);
+                    ctx.lineTo(x * CELL + 0.5, canvas.height);
+                }
+                for (let y = 0; y <= ROWS; y++) {
+                    ctx.moveTo(0, y * CELL + 0.5);
+                    ctx.lineTo(canvas.width, y * CELL + 0.5);
+                }
+                ctx.stroke();
+            }
+
+            function drawPiece(gx, gy, type, mine, selected) {
+                const cx = gx * CELL + CELL / 2;
+                const cy = gy * CELL + CELL / 2;
+                ctx.fillStyle = mine ? 'steelblue' : 'indianred';
+                ctx.beginPath();
+                ctx.arc(cx, cy, CELL * 0.38, 0, Math.PI * 2);
+                ctx.fill();
+                if (selected) {
+                    ctx.strokeStyle = 'gold'; ctx.lineWidth = 3; ctx.stroke(); ctx.lineWidth = 1;
+                }
+                ctx.fillStyle = 'white';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.font = '16px sans-serif';
+                ctx.fillText(type ? type.slice(0, 2) : '?', cx, cy);
+            }
+
+            function drawUnits() {
+                if (phase() === 'placement') {
+                    placement.forEach(p => drawPiece(p.x, p.y, p.type, true, false));
+                    return;
+                }
+                if (!myView) return;
+                myView.units.forEach(u => drawPiece(
+                    u.x, vy(u.y), u.type, u.owner === myPlayer(), u.id === selectedId
+                ));
+            }
+
+            function draw() {
+                drawGrid();
+                if (hoverCell) {
+                    ctx.fillStyle = HOVER_COLOUR;
+                    ctx.fillRect(hoverCell.x * CELL, hoverCell.y * CELL, CELL, CELL);
+                }
+                drawUnits();
+            }
+
+            canvas.addEventListener('click', e => {
+                const cell = cellFromEvent(e);
+                if (!cell) return;
+
+                if (phase() === 'placement') {
+                    if (!sentReady) placeAt(cell);
+                    return;
+                }
+                if (phase() !== 'playing' || myView.turn !== myPlayer()) return;
+
+                const trueY = vy(cell.y);
+                const mine = myView.units.find( u => u.x === cell.x && u.y === trueY && u.owner === myPlayer() );
+                
+                if (mine) { selectedId = mine.id; draw(); return; }
+                if (selectedId === null) return;
+
+                if (role === 'host') handleMove(0, selectedId, cell.x, trueY);
+                else lobby.send({ type: 'move', id: selectedId, x: cell.x, y: trueY });
+                
+                selectedId = null;
+
+                draw();
+            });
+
+            function cellFromEvent(event) {
+                const rect = canvas.getBoundingClientRect();
+                const px = (event.clientX - rect.left) * (canvas.width / rect.width);
+                const py = (event.clientY - rect.top) * (canvas.height / rect.height);
+                const x = Math.floor(px / CELL);
+                const y = Math.floor(py / CELL); 
+                if (x < 0 || x >= COLS || y < 0 || y >= ROWS) return null;
+                return { x, y };
+            }
+
+            function resolveCombat(attacker, defender) {
+                if (attacker === 'EMPEROR') return null;
+                if (defender === 'EMPEROR') return 'attacker';
+
+                if (attacker === 'ASSASSIN') {
+                    if (defender === 'SQUIRE') return 'defender';
+                    if (defender === 'ASSASSIN') return 'both';
+                    return 'attacker';
+                }
+                if (defender === 'ASSASSIN') {
+                    return attacker === 'SQUIRE' ? 'attacker' : 'defender';
+                }
+
+                const atker = RANKS.indexOf(attacker);
+                const dfder = RANKS.indexOf(defender);
+
+                if (atker === dfder) return 'both';
+                return atker < dfder ? 'attacker' : 'defender';
+            }
+
+            function viewFor(player) {
+                const over = state.phase === 'over';
+                const visible = state.phase === 'placement' ? state.units.filter(u => u.owner === player) : state.units;
+                return {
+                    phase: state.phase, turn: state.turn, winner: state.winner,
+                    ready: state.ready,
+                    units: visible.map(u => ({
+                        id: u.id, owner: u.owner, x: u.x, y: u.y,
+                        type: (u.owner === player || over) ? u.type : null
+                    })),
+                    notice: lastNotice && {
+                        x: lastNotice.x, y: lastNotice.y,
+                        role: lastNotice.defenderOwner === player ? 'defender' : 'attacker',
+                        hint: lastNotice.hint
+                    }
+                };
+            }
+
+            const HINT = { attacker: 'higher', defender: 'lower', both: 'equal' };
+            let lastNotice = null;
+            let myView = null;
+
+            const unitAt = (x, y) => state.units.find(u => u.x === x && u.y === y);
+            const removeUnit = unit => { state.units = state.units.filter(u => u !== unit); };
+
+            function handleMove(player, id, x, y) {
+                if (state.phase !== 'playing' || state.turn !== player) return;
+                const unit = state.units.find(u => u.id === id);
+                if (!unit || unit.owner !== player) return;
+                if (!Number.isInteger(x) || !Number.isInteger(y)) return;
+                if (x < 0 || x >= COLS || y < 0 || y >= ROWS) return;
+                if (Math.abs(unit.x - x) + Math.abs(unit.y - y) !== 1) return;
+
+                const target = unitAt(x, y);
+                if (target && target.owner === player) return;
+
+                let notice = null;
+                if (!target) {
+                    unit.x = x;
+                    unit.y = y;
+                } else {
+                    const result = resolveCombat(unit.type, target.type);
+                    if (result === null) return;   
+                    notice = { x, y, defenderOwner: target.owner, hint: HINT[result] };
+
+                    if (target.type === 'EMPEROR') state.winner = player;
+                    if (result === 'attacker') { removeUnit(target); unit.x = x; unit.y = y; }
+                    else if (result === 'defender') removeUnit(unit);
+                    else { removeUnit(unit); removeUnit(target); }
+                }
+
+                lastNotice = notice;
+                if (state.winner === null) state.turn = 1 - player;
+                else state.phase = 'over';
+                sendViews();
+            }
+
+            canvas.addEventListener('mousemove', e => {
+                hoverCell = cellFromEvent(e);
+                draw();
+            });
+
+            canvas.addEventListener('mouseleave', () => {
+                hoverCell = null;
+                draw();
+            });
+
+            const lobby = new Lobby();
+            const statusElement = document.getElementById('status');
+
+            const infoElement = document.getElementById('info');
+            const paletteElement = document.getElementById('palette');
+            const controlsElement = document.getElementById('controls');
+            const readyBtn = document.getElementById('readyBtn');
+
+            const remaining = type => ARMY[type] - placement.filter(p => p.type === type).length;
+
+            function buildPalette() {
+                const placing = phase() === 'placement' && !sentReady;
+                controlsElement.style.display = placing ? 'block' : 'none';
+                if (!placing) return;
+
+                paletteElement.innerHTML = '';
+                Object.keys(ARMY).forEach(type => {
+                    const left = remaining(type);
+                    const btn = document.createElement('button');
+                    btn.textContent = `${type} x${left}`;
+                    btn.disabled = left === 0;
+                    btn.onclick = () => { selectedType = type; buildPalette(); };
+                    paletteElement.appendChild(btn);
+                });
+                readyBtn.disabled = placement.length !== TOTAL;
+            }
+
+            function placeAt(cell) {
+                const existing = placement.find(p => p.x === cell.x && p.y === cell.y);
+                if (existing) {
+                    placement = placement.filter(p => p !== existing);
+                    selectedType = existing.type;
+                } else if (selectedType && remaining(selectedType) > 0 && cell.y >= ROWS - HOME) {
+                    placement.push({ type: selectedType, x: cell.x, y: cell.y });
+                    if (remaining(selectedType) === 0) selectedType = null;
+                }
+
+                buildPalette();
+                draw();
+            }
+
+            function handleReady(player, layout) {
+                if (state.phase !== 'placement' || state.ready[player]) return;
+                if (!Array.isArray(layout) || layout.length !== TOTAL) return;
+
+                const yMin = player === 0 ? ROWS - HOME : 0;
+                const yMax = player === 0 ? ROWS - 1 : HOME - 1;
+
+                const counts = {};
+                const seen = new Set();
+                for (const p of layout) {
+                    if (!p || !Object.hasOwn(ARMY, p.type)) return;
+                    if (!Number.isInteger(p.x) || !Number.isInteger(p.y)) return;
+                    if (p.x < 0 || p.x >= COLS || p.y < yMin || p.y > yMax) return;
+                    const key = p.x + ',' + p.y;
+                    if (seen.has(key)) return;
+                    seen.add(key);
+                    counts[p.type] = (counts[p.type] || 0) + 1;
+                }
+                if (Object.keys(ARMY).some(t => counts[t] !== ARMY[t])) return;
+
+                layout.forEach(p => state.units.push({
+                    id: nextId++, owner: player, type: p.type, x: p.x, y: p.y
+                }));
+                state.ready[player] = true;
+
+                if (state.ready[0] && state.ready[1]) {
+                    state.phase = 'playing';
+                    state.turn = 0;
+                }
+                sendViews();
+            }
+
+            readyBtn.onclick = () => {
+                if (sentReady || placement.length !== TOTAL) return;
+                sentReady = true;
+
+                const layout = placement.map(p => ({ type: p.type, x: p.x, y: vy(p.y) }));
+                if (role === 'host') handleReady(0, layout);
+                else lobby.send({ type: 'ready', placement: layout });
+
+                updateStatus();
+                buildPalette();
+                draw();
+            };
+
+            document.getElementById('randomBtn').onclick = () => {
+                if (sentReady) return;
+                const free = [];
+                for (let y = ROWS - HOME; y < ROWS; y++) {
+                    for (let x = 0; x < COLS; x++) {
+                        if (!placement.some(p => p.x === x && p.y === y)) free.push({ x, y });
+                    }
+                }
+                for (let i = free.length - 1; i > 0; i--) {   
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [free[i], free[j]] = [free[j], free[i]];
+                }
+                Object.keys(ARMY).forEach(type => {
+                    while (remaining(type) > 0) {
+                        const cell = free.pop();
+                        placement.push({ type, x: cell.x, y: cell.y });
+                    }
+                });
+                selectedType = null;
+                buildPalette();
+                draw();
+            };
+
+            document.getElementById('clearBtn').onclick = () => {
+                if (sentReady) return;
+                placement = [];
+                selectedType = null;
+                buildPalette();
+                draw();
+            };
+
+            function applyView(view) {
+                myView = view;
+                selectedId = null;
+                updateStatus();
+                updateInfo();
+                buildPalette();
+                draw();
+            }
+
+            function sendViews () {
+                lobby.send({ type: 'state', state: viewFor(1) });
+                applyView(viewFor(0));
+            }
+
+            function cellName(x, trueY) { return 'ABCDEFGH'[x] + (ROWS - vy(trueY)); }
+
+            function updateStatus() {
+                if (phase() === 'placement') statusElement.textContent = sentReady ? 'Other player is placing...' : 'Place your units';
+                else if (phase() === 'over') statusElement.textContent = myView.winner === myPlayer() ? 'You win!' : 'You lose!';
+                else statusElement.textContent = myView.turn === myPlayer() ? 'Your turn' : 'Other player\'s turn'; 
+            }
+
+            function updateInfo() {
+                const n = myView && myView.notice;
+                if (!n) { infoElement.textContent = ''; return; }
+                const where = cellName(n.x, n.y);
+                if (n.role === 'defender') infoElement.textContent = n.hint === 'equal' ? `Both were destroyed at ${where}` : `Your unit at ${where} was attacked and destroyed`;
+                else infoElement.textContent = n.hint === 'higher' ? `Your attack at ${where} succeeded` : n.hint === 'lower' ? `Your unit was destroyed at ${where}.` : `Both units were destroyed at ${where}`;
+            }
+
+            let role = null;
+
+            lobby.onConnect = () => {
+                document.getElementById('menu').style.display = 'none';
+                document.getElementById('game').style.display = 'block';
+                if (role === 'host') sendViews();
+                else { updateStatus(); buildPalette(); draw(); }
+            };
+
+            lobby.onMessage = msg => {
+                if (msg.type === 'state' && role === 'guest') applyView(msg.state);
+                else if (msg.type === 'ready' && role === 'host') handleReady(1, msg.placement);
+                else if (msg.type === 'move' && role === 'host') handleMove(1, msg.id, msg.x, msg.y);
+            };
+
+            lobby.onDisconnect = () => statusElement.textContent = "The other player left.";
+
+            document.getElementById('hostBtn').onclick = async () => {
+                role = 'host';
+                try {
+                    const code = await lobby.host();
+                    statusElement.textContent = `Lobby code: ${code}. Waiting for player 2...`;
+                } catch (e) {
+                    statusElement.textContent = 'Could not create lobby: ' + (e.type || e.message);
+                }
+            };
+
+            document.getElementById('joinBtn').onclick = async () => {
+                role = 'guest';
+                try {
+                    statusElement.textContent = 'Joining...';
+                    await lobby.join(document.getElementById('codeInput').value);
+                } catch (e) {
+                    statusElement.textContent = 'Could not join: ' + (e.type || e.message);
+                }
+            };
+
+        </script>
+    </body>
+</html>
