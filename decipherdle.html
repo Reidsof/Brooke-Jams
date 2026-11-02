@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        
+        <link href="https://fonts.googleapis.com/css?family=Antic+Slab" rel="stylesheet">
+
+        <title>Decipherdle</title>
+        <style>
+            body { font-family: 'Antic Slab', serif; text-align: center; }
+            #puzzle {
+                display: flex;
+                flex-wrap: wrap;
+                justify-content: center;
+                gap: 1.25rem 1.5rem;
+                max-width: 800px;
+                margin: 1.5rem auto;
+            }
+            .word { display: flex; }           /* a word never breaks in the middle */
+            .cell { width: 1.6rem; margin: 0 1px; cursor: pointer; user-select: none; }
+            .cell span { display: block; font-size: 1.4rem; }
+            .cell .guess {
+                height: 2rem;
+                border-bottom: 2px solid black;
+                color: steelblue;
+            }
+            .cell.selected { background: rgba(255, 215, 0, 0.35); }
+            .punct { font-size: 1.4rem; align-self: flex-start; }
+            .solved .guess { color: green; }
+            #timer { font-size: 1.5rem; }
+            #copyMessage { white-space: pre-line; }
+        </style>
+    </head>
+    <body>
+        <a href="index.html">Home</a>
+        <h1>Decipherdle</h1>
+        <div id="puzzle"></div>
+        <p id="status"></p>
+        <p id="timer">0:00</p>
+        <button id="shareBtn" hidden>Copy result</button>
+        <p id="copyMessage"></p>
+    </body>
+    <script>
+        let encrypted;
+
+        const puzzleElement = document.getElementById('puzzle');
+        const statusElement = document.getElementById('status');
+
+        const guesses = {};
+        let selected = null;
+        let solved = false;
+
+        const timerElement = document.getElementById('timer');
+        const shareBtn = document.getElementById('shareBtn');
+        const copyMessage = document.getElementById('copyMessage');
+
+        let startTime = null;
+        let elapsed = 0;
+        let timerId = null;
+        let finished = false;
+
+        const START = new Date(2026, 10, 3);
+        const dayNumber = Math.floor((new Date() - START ) / 86400000);
+
+        const CANVAS_BORDER_COLOUR = 'black';
+        const CANVAS_BACKGROUND_COLOUR = "white";
+
+        const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split("");
+
+        const PHRASES = [
+            'They say a person needs just three things to be truly happy in this world: someone to love, something to do, and something to hope for.',
+            'This above all: to thine own self be true, And it must follow, as the night the day, Thou canst not then be false to any man.',
+            'There was a man who had an interesting job. He skipped, ran, jumped all day. He rolled through a window, tucking his legs to his chest.'
+        ]
+
+        const phraseRand = mulberry32(dayNumber);
+        const cipherRand = mulberry32(dayNumber + 1000);
+
+        const phrase = PHRASES[Math.floor(phraseRand() * PHRASES.length)];
+        const cipher = cipherMapper(cipherRand);
+
+        function formatTime(ms) {
+            const total = Math.floor(ms / 1000);
+            const minutes = Math.floor(total / 60);
+            const seconds = String(total % 60).padStart(2, '0');
+            return `${minutes}:${seconds}`;
+        }
+
+        function updateTimer() {
+            elapsed = Date.now() - startTime;
+            timerElement.textContent = formatTime(elapsed);
+        }
+
+        function startTimer() {
+            if (startTime !== null) return;
+            startTime = Date.now();
+            timerId = setInterval(updateTimer, 250);
+        }
+
+        function stopTimer() {
+            clearInterval(timerId);
+            if (startTime !== null) updateTimer();
+        }
+
+        function mulberry32(seed) {
+            return function () {
+                seed |= 0; seed = seed + 0x6D2B79F5 | 0;
+                let t = Math.imul(seed ^ seed >>> 15, 1 | seed);
+                t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+                return ((t ^ t >>> 14) >>> 0) / 4294967296;
+            };
+        }
+
+        function shuffler(arr, rand = Math.random) {
+            const array = [...arr];
+            for (let i = array.length - 1; i > 0; i--) {
+                const j = Math.floor(rand() * (i + 1));
+                [array[i], array[j]] = [array[j], array[i]];
+            }
+            return array;
+        }
+
+        function cipherMapper(rand = Math.random) {
+            let shuffled;
+            do {
+                shuffled = shuffler(ALPHABET, rand);
+            } while (shuffled.some((letter, i) => letter === ALPHABET[i]));
+
+            const cipherMap = {};
+
+            ALPHABET.forEach((letter, index) => { cipherMap[letter] = shuffled[index]; });
+            return cipherMap;
+        }
+
+        function encode(text, map) { return text.toUpperCase().replace(/[A-Z]/g, ch => map[ch]); }
+
+        function invert(map) { return Object.fromEntries(Object.entries(map).map(([plain, cipher]) => [cipher, plain])); }
+
+        function render() {
+            solved = isSolved();
+
+            if (solved && !finished) {
+                finished = true;
+                stopTimer();
+            }
+
+            shareBtn.hidden = !solved;
+
+            function shareText() { return `Decipherdle #${dayNumber + 1}\n ${formatTime(elapsed)}`; }
+
+            shareBtn.onclick = async () => {
+                try {
+                    await navigator.clipboard.writeText(shareText());
+                    copyMessage.textContent = 'Copied to clipboard';
+                } catch {
+                    copyMessage.textContent = 'Copy this:\n' + shareText();
+                }
+            }; 
+
+            puzzleElement.className = solved ? 'solved' : '';
+            puzzleElement.innerHTML = '';
+
+            encrypted.split(' ').forEach(word => {
+                const wordElement = document.createElement('div');
+                wordElement.className = 'word';
+
+                [...word].forEach(ch => {
+                    if (/[A-Z]/.test(ch)) {
+                        const cell = document.createElement('div');
+                        cell.className = 'cell' + (ch === selected ? ' selected' : '');
+                        cell.dataset.letter = ch;
+                        cell.innerHTML = `<span class="cipher">${ch}</span>` +
+                            `<span class="guess">${guesses[ch] || ''}</span>`;
+                        wordElement.appendChild(cell);
+                    } else {
+                        const punct = document.createElement('span');
+                        punct.className = 'punct';
+                        punct.textContent = ch;
+                        wordElement.appendChild(punct);
+                    }
+                });
+                puzzleElement.appendChild(wordElement);
+            });
+
+            const filled = [...lettersInPuzzle].filter(c => guesses[c]).length;
+            statusElement.textContent = solved ? 'Solved!' : `${filled} of ${lettersInPuzzle.size} letters guessed`;
+        }
+        
+        encrypted = encode(phrase, cipher);
+        const solution = invert(cipher);
+        const lettersInPuzzle = new Set(encrypted.match(/[A-Z]/g));
+        
+        render();
+
+        function isSolved() {
+            return [...lettersInPuzzle].every(c => guesses[c] === solution[c]);
+        }
+    
+        puzzleElement.addEventListener('click', e => {
+            const cell = e.target.closest('.cell');
+            if (!cell || solved) return;
+            selected = cell.dataset.letter;
+            render();
+        });
+
+        document.addEventListener('keydown', e => {
+            if (!selected || solved) return;
+            if (e.ctrlKey || e.metaKey || e.altKey) return;
+
+            const key = e.key.toUpperCase();
+            if (/^[A-Z]$/.test(key)) {
+                for (const c in guesses) if (guesses[c] === key) delete guesses[c];
+                guesses[selected] = key;
+                startTimer(); 
+            } else if (e.key === 'Backspace' || e.key === 'Delete') {
+                delete guesses[selected];
+            } else if (e.key === 'Escape') {
+                selected = null;
+            } else {
+                return;
+            }
+            render();
+        });
+    
+    </script>
+</html>
