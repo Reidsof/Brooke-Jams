@@ -66,6 +66,8 @@
         const CANVAS_BORDER_COLOUR = 'black';
         const CANVAS_BACKGROUND_COLOUR = "white";
 
+        const SAVE_KEY = 'decipherdle-' + dayNumber;
+
         const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split("");
 
         const PHRASES = [
@@ -77,7 +79,7 @@
         const phraseRand = mulberry32(dayNumber);
         const cipherRand = mulberry32(dayNumber + 1000);
 
-        const phrase = PHRASES[Math.floor(phraseRand() * PHRASES.length)];
+        const phrase = PHRASES[dayNumber] ?? PHRASES[Math.floor(phraseRand() * PHRASES.length)];
         const cipher = cipherMapper(cipherRand);
 
         function formatTime(ms) {
@@ -101,6 +103,40 @@
         function stopTimer() {
             clearInterval(timerId);
             if (startTime !== null) updateTimer();
+        }
+
+        function saveProgress() {
+            try {
+                localStorage.setItem(SAVE_KEY, JSON.stringify({
+                    encrypted, guesses, startTime, elapsed, finished
+                }));
+            } catch {
+
+            }
+        }
+
+        function loadProgress() {
+            let saved;
+            try {
+                saved = JSON.parse(localStorage.getItem(SAVE_KEY));
+            } catch {
+                return; 
+            }
+
+            if (!saved || saved.encrypted !== encrypted) return;
+
+            for (const [c, g] of Object.entries(saved.guesses || {})) {
+                if (lettersInPuzzle.has(c) && /^[A-Z]$/.test(g)) guesses[c] = g;
+            }
+            if (saved.finished) {
+                finished = true;
+                elapsed = saved.elapsed;
+                timerElement.textContent = formatTime(elapsed);
+            } else if (saved.startTime) {
+                startTime = saved.startTime;
+                updateTimer();
+                timerId = setInterval(updateTimer, 250);
+            }
         }
 
         function mulberry32(seed) {
@@ -185,12 +221,14 @@
 
             const filled = [...lettersInPuzzle].filter(c => guesses[c]).length;
             statusElement.textContent = solved ? 'Solved!' : `${filled} of ${lettersInPuzzle.size} letters guessed`;
+            saveProgress();
         }
         
         encrypted = encode(phrase, cipher);
         const solution = invert(cipher);
         const lettersInPuzzle = new Set(encrypted.match(/[A-Z]/g));
         
+        loadProgress();
         render();
 
         function isSolved() {
