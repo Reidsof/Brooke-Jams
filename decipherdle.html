@@ -79,7 +79,9 @@
         const PHRASES = [
             'They say a person needs just three things to be truly happy in this world: someone to love, something to do, and something to hope for.',
             'This above all: to thine own self be true, And it must follow, as the night the day, Thou canst not then be false to any man.',
-            'There was a man who had an interesting job. He skipped, ran, jumped all day. He rolled through a window, tucking his legs to his chest.'
+            'There was a man who had an interesting job. He skipped, ran, jumped all day. He rolled through a window, tucking his legs to his chest.',
+            'My neighbour started a new business of renting out his goats to clear weeds from overgrown properties. Seeing his success, I based mine off the same model.',
+            'Since my cat learned to push doors open, she often finds herself trapped trapped inside my bedroom, having shut the door herself. As I lie in bed in the dark, I feel her snuggle up against me.'
         ]
 
         const phraseRand = mulberry32(dayNumber);
@@ -183,7 +185,7 @@
             render();
         }
 
-        hintBtn.onClock = giveHint;
+        hintBtn.onClick = giveHint;
 
         function shuffler(arr, rand = Math.random) {
             const array = [...arr];
