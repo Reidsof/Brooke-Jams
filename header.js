@@ -3,7 +3,7 @@ style.textContent = `
     body {
         margin: 0;
         font-family: 'Antic Slab', serif;
-        background: #020016;
+        background: #ae9cf0;
     }
     .site-header {
         display:flex;

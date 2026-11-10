@@ -23,14 +23,29 @@
             .cell .guess {
                 height: 2rem;
                 border-bottom: 2px solid black;
-                color: steelblue;
+                color: rgb(62, 28, 78);
             }
-            .cell.hinted .guess { color: darkorange; }
+            .cell.hinted .guess { color: rgb(161, 15, 76); }
             .cell.selected { background: rgba(255, 215, 0, 0.35); }
             .punct { font-size: 1.4rem; align-self: flex-start; }
             .solved .guess { color: green; }
             #timer { font-size: 1.5rem; }
             #copyMessage { white-space: pre-line; }
+
+            .btn-rounded {
+                padding: 12px 28px;
+                background-color: rgb(255, 255, 255);
+                color: black;
+                border: 2px solid black;
+                font-size: 16px;
+                font-family: 'Antic Slab';
+                border-radius: 999px;
+            }
+
+            .btn-rounded:hover { 
+                background-color: black;
+                color: white;
+            }
         </style>
     </head>
     <body>
@@ -39,9 +54,9 @@
         <div id="puzzle"></div>
 
         <p id="status"></p>
-        <button id="hintBtn">Hint (0 Used)</button>
+        <button class="btn-rounded" id="hintBtn">Hint (0 Used)</button>
         <p id="timer">0:00</p>
-        <button id="shareBtn" hidden>Copy result</button>
+        <button class="btn-rounded" id="shareBtn" hidden>Copy result</button>
         <p id="copyMessage"></p>
     </body>
     <script>
