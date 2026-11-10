@@ -70,6 +70,7 @@
 
         const guesses = {};
         let selected = null;
+        let cursor = 0;
         let solved = false;
 
         const timerElement = document.getElementById('timer');
@@ -260,6 +261,8 @@
             puzzleElement.className = solved ? 'solved' : '';
             puzzleElement.innerHTML = '';
 
+            let cellIndex = 0;
+
             encrypted.split(' ').forEach(word => {
                 const wordElement = document.createElement('div');
                 wordElement.className = 'word';
@@ -267,8 +270,10 @@
                 [...word].forEach(ch => {
                     if (/[A-Z]/.test(ch)) {
                         const cell = document.createElement('div');
+
                         cell.className = 'cell' + (ch === selected ? ' selected' : '') + (hinted.has(ch) ? ' hinted' : '');
                         cell.dataset.letter = ch;
+                        cell.dataset.index = cellIndex++;
                         cell.innerHTML = `<span class="cipher">${ch}</span>` +
                             `<span class="guess">${guesses[ch] || ''}</span>`;
                         wordElement.appendChild(cell);
@@ -286,10 +291,25 @@
             statusElement.textContent = solved ? 'Solved!' : `${filled} of ${lettersInPuzzle.size} letters guessed`;
             saveProgress();
         }
+
+        function moveCursor(dir) {
+            const n = letterSequence.length;
+            if (selected === null) {
+                cursor = dir === 1 ? 0 : n - 1;
+            } else {
+                let i = cursor;
+                do {
+                    i = (i + dir + n) % n;
+                } while (letterSequence[i] === selected && i !== cursor);
+                cursor = i;
+            }
+            selected = letterSequence[cursor];
+        }
         
         encrypted = encode(phrase, cipher);
         const solution = invert(cipher);
-        const lettersInPuzzle = new Set(encrypted.match(/[A-Z]/g));
+        const letterSequence = encrypted.match(/[A-Z]/g);
+        const lettersInPuzzle = new Set(letterSequence);
         
         loadProgress();
         render();
@@ -302,13 +322,22 @@
             const cell = e.target.closest('.cell');
             if (!cell || solved) return;
             selected = cell.dataset.letter;
+            cursor = Number(cell.dataset.index);
             render();
         });
 
         document.addEventListener('keydown', e => {
-            if (!selected || solved) return;
+            if (solved) return;
             if (e.ctrlKey || e.metaKey || e.altKey) return;
 
+            if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+                e.preventDefault();
+                moveCursor(e.key === 'ArrowRight' ? 1 : -1);
+                render();
+                return;
+            }
+
+            if (!selected) return;
             const key = e.key.toUpperCase();
             const locked = hinted.has(selected);
 
@@ -317,6 +346,7 @@
                 if (Object.keys(guesses).some(c => hinted.has(c) && guesses[c] === key)) return;
                 for (const c in guesses) if (guesses[c] === key) delete guesses[c];
                 guesses[selected] = key;
+                moveCursor(1);
                 startTimer(); 
             } else if (e.key === 'Backspace' || e.key === 'Delete') {
                 if (locked) return;
