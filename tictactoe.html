@@ -6,7 +6,12 @@
         <title>Tic-Tac-Toe</title>
         <link href="https://fonts.googleapis.com/css?family=Antic+Slab" rel="stylesheet">
         <style>
-            body { font-family: 'Antic Slab', serif; text-align: center; }
+            body { 
+                font-family: 'Antic Slab', serif; 
+                text-align: center; 
+                background-color: white;
+                color: rgb(244, 224, 255); 
+            }
             #board {
                 display: grid;
                 grid-template-columns: repeat(3, 100px);
@@ -21,14 +26,50 @@
             }
             .cell:disabled { cursor: default; }
             .cell.win { background: lightgreen; }
+            .games { 
+                align-items: center;
+                display: grid; 
+                grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); 
+                gap: 1.5rem; 
+                width: 100%;
+                max-width: 900px;
+            }
             #game { display: none; }
             #rematchBtn { display: none; }
+            .parent-card {
+                display: flex; 
+                align-items: center;
+                justify-content: center;
+                height: 100v;
+            }
+            .game-card {
+                justify-content: center;
+                display: flex;
+                align-items: center;
+                gap: 1.25rem;
+                padding: 1rem;
+                color: black;
+                text-decoration: none;
+                border-radius: 8px;
+                width: 600px;
+                height: 200px;
+            }
+            .game-card img { width: 168px; height: 168px; flex-shrink: 0; object-fit: contain; }
+            .game-text { min-width: 0; text-align: left; font-weight: bold;}
         </style>
     </head>
     <body>
-        <a href="index.html">Home</a>
-        <h1>Tic-Tac-Toe</h1>
-
+        <script src="header.js"></script>
+        <div class="parent-card">
+            <div class="game-card">
+                <img src="tictactoe.png">
+                <div class="game-text">
+                    <h1>Tic-Tac-Toe</h1>
+                    <p>Play the classic 2 player versus game.</p>
+                </div>
+            </div>
+        
+        </div>
         <div id="menu">
             <button id="hostBtn">Create lobby</button>
             <input id="codeInput" placeholder="Enter code" maxlength="5">

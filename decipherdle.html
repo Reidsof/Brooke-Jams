@@ -56,25 +56,40 @@
             .cell .guess {
                 height: 2rem;
                 border-bottom: 2px solid black;
-                color: steelblue;
+                color: rgb(62, 28, 78);
             }
-            .cell.hinted .guess { color: darkorange; }
+            .cell.hinted .guess { color: rgb(161, 15, 76); }
             .cell.selected { background: rgba(255, 215, 0, 0.35); }
             .punct { font-size: 1.4rem; align-self: flex-start; }
             .solved .guess { color: green; }
             #timer { font-size: 1.5rem; }
             #copyMessage { white-space: pre-line; }
+
+            .btn-rounded {
+                padding: 12px 28px;
+                background-color: rgb(255, 255, 255);
+                color: black;
+                border: 2px solid black;
+                font-size: 16px;
+                font-family: 'Antic Slab';
+                border-radius: 999px;
+            }
+
+            .btn-rounded:hover { 
+                background-color: black;
+                color: white;
+            }
         </style>
     </head>
     <body>
-        <a href="index.html">Home</a>
+        <script src="header.js"></script>
         <h1>Decipherdle</h1>
         <div id="puzzle"></div>
 
         <p id="status"></p>
-        <button id="hintBtn">Hint (0 Used)</button>
+        <button class="btn-rounded" id="hintBtn">Hint (0 Used)</button>
         <p id="timer">0:00</p>
-        <button id="shareBtn" hidden>Copy result</button>
+        <button class="btn-rounded" id="shareBtn" hidden>Copy result</button>
         <p id="copyMessage"></p>
         <div id="keyboard" aria-label="On-screen keyboard"></div>
     </body>
@@ -90,6 +105,7 @@
 
         const guesses = {};
         let selected = null;
+        let cursor = 0;
         let solved = false;
 
         const timerElement = document.getElementById('timer');
@@ -116,7 +132,20 @@
             'This above all: to thine own self be true, And it must follow, as the night the day, Thou canst not then be false to any man.',
             'There was a man who had an interesting job. He skipped, ran, jumped all day. He rolled through a window, tucking his legs to his chest.',
             'My neighbour started a new business of renting out his goats to clear weeds from overgrown properties. Seeing his success, I based mine off the same model.',
-            'Since my cat learned to push doors open, she often finds herself trapped trapped inside my bedroom, having shut the door herself. As I lie in bed in the dark, I feel her snuggle up against me.'
+            'Since my cat learned to push doors open, she often finds herself trapped trapped inside my bedroom, having shut the door herself. As I lie in bed in the dark, I feel her snuggle up against me.',
+            'The person who is most responsible for success in your life is yourself. Good words and good deeds, to love and to learn, that is what it means to live.',
+            'When the quick brown fox questioned why the lazy dog just let her jump over him, he said there are too many things in life to worry about other than being jumped over.',
+            'I know the moth did not mean to get absorbed by the light the entire night the same way we did not wish to get absorbed by the light box that we hold in our hands.',
+            'The great black eagle flew east, over the barrens and under the tall tree branches. He flew until he made it home to his flock.',
+            'If you like tuna and tomato sauce, try combining the two, it\’s really not as bad as it sounds.',
+            'It dawned on her that others could make her happier, but only she could make herself happy. So she decided to step out the door and start anew.',
+            'He learned the important lesson that a picnic at the beach on a windy day is a bad idea, after a few water-soaked clothes and shattered platters.',
+            'The clouds formed beautiful animals in the sky that eventually created a tornado to wreak havoc with overturned cars, broken fire hydrants, and roofless houses.',
+            'A purple pig and a green donkey flew a kite in the middle of the day and ended up sunburnt. From then on, they understood the importance of sunblock.',
+            'The two walked down the slot canyon oblivious to the sound of thunder in the distance. To their further disfortune, the sleezy salesman sold them greatly overpriced umbrellas.',
+            'She was sad to hear that fireflies are facing extinction due to artificial light, habitat loss, and pesticides. So she decided to grab a jar and keep them safe.',
+            'She moved forward only because she trusted that the ending she now was going through must be followed by a new beginning.',
+            'The penguin slid down the hill on its belly like it was having the best day of its life.'
         ]
 
         const phraseRand = mulberry32(dayNumber);
@@ -278,6 +307,8 @@
             puzzleElement.className = solved ? 'solved' : '';
             puzzleElement.innerHTML = '';
 
+            let cellIndex = 0;
+
             encrypted.split(' ').forEach(word => {
                 const wordElement = document.createElement('div');
                 wordElement.className = 'word';
@@ -285,8 +316,10 @@
                 [...word].forEach(ch => {
                     if (/[A-Z]/.test(ch)) {
                         const cell = document.createElement('div');
+
                         cell.className = 'cell' + (ch === selected ? ' selected' : '') + (hinted.has(ch) ? ' hinted' : '');
                         cell.dataset.letter = ch;
+                        cell.dataset.index = cellIndex++;
                         cell.innerHTML = `<span class="cipher">${ch}</span>` +
                             `<span class="guess">${guesses[ch] || ''}</span>`;
                         wordElement.appendChild(cell);
@@ -304,10 +337,25 @@
             statusElement.textContent = solved ? 'Solved!' : `${filled} of ${lettersInPuzzle.size} letters guessed`;
             saveProgress();
         }
+
+        function moveCursor(dir) {
+            const n = letterSequence.length;
+            if (selected === null) {
+                cursor = dir === 1 ? 0 : n - 1;
+            } else {
+                let i = cursor;
+                do {
+                    i = (i + dir + n) % n;
+                } while (letterSequence[i] === selected && i !== cursor);
+                cursor = i;
+            }
+            selected = letterSequence[cursor];
+        }
         
         encrypted = encode(phrase, cipher);
         const solution = invert(cipher);
-        const lettersInPuzzle = new Set(encrypted.match(/[A-Z]/g));
+        const letterSequence = encrypted.match(/[A-Z]/g);
+        const lettersInPuzzle = new Set(letterSequence);
         
         loadProgress();
         render();
@@ -354,14 +402,22 @@
             const cell = e.target.closest('.cell');
             if (!cell || solved) return;
             selected = cell.dataset.letter;
+            cursor = Number(cell.dataset.index);
             render();
         });
 
         document.addEventListener('keydown', e => {
-<<<<<<< Updated upstream
-            if (!selected || solved) return;
+            if (solved) return;
             if (e.ctrlKey || e.metaKey || e.altKey) return;
 
+            if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+                e.preventDefault();
+                moveCursor(e.key === 'ArrowRight' ? 1 : -1);
+                render();
+                return;
+            }
+
+            if (!selected) return;
             const key = e.key.toUpperCase();
             const locked = hinted.has(selected);
 
@@ -370,6 +426,7 @@
                 if (Object.keys(guesses).some(c => hinted.has(c) && guesses[c] === key)) return;
                 for (const c in guesses) if (guesses[c] === key) delete guesses[c];
                 guesses[selected] = key;
+                moveCursor(1);
                 startTimer(); 
             } else if (e.key === 'Backspace' || e.key === 'Delete') {
                 if (locked) return;
@@ -419,7 +476,7 @@
         keyboardElement.addEventListener('click', e => {
             const btn = e.target.closest('.kb-key');
             if (btn) pressKey(btn.dataset.key);
->>>>>>> Stashed changes
+Stashed changes
         });
     
     </script>
