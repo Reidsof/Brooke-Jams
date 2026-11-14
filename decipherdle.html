@@ -407,43 +407,11 @@
         });
 
         document.addEventListener('keydown', e => {
-            if (solved) return;
-            if (e.ctrlKey || e.metaKey || e.altKey) return;
-
-            if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
-                e.preventDefault();
-                moveCursor(e.key === 'ArrowRight' ? 1 : -1);
-                render();
-                return;
-            }
-
-            if (!selected) return;
-            const key = e.key.toUpperCase();
-            const locked = hinted.has(selected);
-
-            if (/^[A-Z]$/.test(key)) {
-                if (locked) return;
-                if (Object.keys(guesses).some(c => hinted.has(c) && guesses[c] === key)) return;
-                for (const c in guesses) if (guesses[c] === key) delete guesses[c];
-                guesses[selected] = key;
-                moveCursor(1);
-                startTimer(); 
-            } else if (e.key === 'Backspace' || e.key === 'Delete') {
-                if (locked) return;
-                delete guesses[selected];
-            } else if (e.key === 'Escape') {
-                selected = null;
-            } else {
-                return;
-            }
-            render();
-=======
             if (e.ctrlKey || e.metaKey || e.altKey) return;
 
             const key = e.key.length === 1 ? e.key.toUpperCase() : e.key;
             const isLetter = /^[A-Z]$/.test(key);
             const isControl = ['ArrowLeft', 'ArrowRight', 'Backspace', 'Delete', 'Escape'].includes(key);
-
             if (!isLetter && !isControl) return;
 
             if (key === 'ArrowLeft' || key === 'ArrowRight') e.preventDefault();
@@ -476,8 +444,6 @@
         keyboardElement.addEventListener('click', e => {
             const btn = e.target.closest('.kb-key');
             if (btn) pressKey(btn.dataset.key);
-Stashed changes
         });
-    
     </script>
 </html>
