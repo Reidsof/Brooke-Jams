@@ -8,7 +8,7 @@
 
         <title>Decipherdle</title>
         <style>
-            body { font-family: 'Antic Slab', serif; text-align: center; }
+            body { font-family: 'Antic Slab', serif; text-align: center; touch-action: manipulation; padding-bottom: 190px; }
             #puzzle {
                 display: flex;
                 flex-wrap: wrap;
@@ -18,7 +18,40 @@
                 margin: 1.5rem auto;
             }
             .word { display: flex; }           /* a word never breaks in the middle */
-            .cell { width: 1.6rem; margin: 0 1px; cursor: pointer; user-select: none; }
+            .cell { width: 1.6rem; margin: 0 1px; cursor: pointer; user-select: none; scroll-margin-bottom: 200px; scroll-margin-top: 80px; }
+
+            #keyboard {
+                position: fixed;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                padding: 8px 4px calc(8px + env(safe-area-inset-bottom));
+                background: #f2f2f2;
+                border-top: 2px solid black;
+            }
+
+            .kb-row { display: flex; justify-content: center; gap: 4px; margin-top: 4px; }
+            .kb-key {
+                flex: 1 1 0;
+                min-width: 0;
+                max-width: 44px;
+                height: 48px;
+                font-family: inherit;
+                font-size: 1.1rem;
+                background: white;
+                border: 1px solid black;
+                border-radius: 6px;
+                cursor: pointer;
+                touch-action: manipulation;
+            }
+            .kb-key:active { background: black; color: white; }
+
+            @media (max-width: 480px) {
+                #puzzle { gap: 1rem 0.9rem; padding: 0 0.5rem; }
+                .cell { width: 1.4rem; }
+                .cell span { font-size: 1.2rem; }
+            }
+
             .cell span { display: block; font-size: 1.4rem; }
             .cell .guess {
                 height: 2rem;
@@ -43,6 +76,7 @@
         <p id="timer">0:00</p>
         <button id="shareBtn" hidden>Copy result</button>
         <p id="copyMessage"></p>
+        <div id="keyboard" aria-label="On-screen keyboard"></div>
     </body>
     <script>
         let encrypted;
@@ -50,6 +84,7 @@
         const puzzleElement = document.getElementById('puzzle');
         const statusElement = document.getElementById('status');
         const hintBtn = document.getElementById('hintBtn');
+        const keyboardElement = document.getElementById('keyboard');
         let hints = 0;
         const hinted = new Set();
 
@@ -221,6 +256,7 @@
             }
 
             shareBtn.hidden = !solved;
+            keyboardElement.hidden = solved;
             hintBtn.textContent = `Hint (${hints} used)`;
             hintBtn.disabled = solved;
 
@@ -230,11 +266,12 @@
             }
 
             shareBtn.onclick = async () => {
+                const result = shareText();
                 try {
-                    await navigator.clipboard.writeText(shareText());
+                    await navigator.clipboard.writeText(result);
                     copyMessage.textContent = 'Copied to clipboard';
                 } catch {
-                    copyMessage.textContent = 'Copy this:\n' + shareText();
+                    copyMessage.textContent = 'Copy this:\n' + result;
                 }
             }; 
 
@@ -278,6 +315,40 @@
         function isSolved() {
             return [...lettersInPuzzle].every(c => guesses[c] === solution[c]);
         }
+
+        function scrollToCursor() {
+            const el = puzzleElement.querySelector(`.cell[data-index="${cursor}"]`);
+            if (el) el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        }
+
+        function pressKey(key) {
+            if (solved) return;
+
+            if (key === 'ArrowLeft' || key === 'ArrowRight') {
+                moveCursor(key === 'ArrowRight' ? 1 : -1); //  if key is arrow right, move cursor right, otherwise, move left
+            } else {
+                if (!selected) return;
+                const locked = hinted.has(selected);
+
+                if (/^[A-Z]$/.test(key)) {
+                    if (locked) return;
+                    if (Object.keys(guesses).some(c => hinted.has(c) && guesses[c] === key)) return;
+                    for (const c in guesses) if (guesses[c] === key) delete guesses[c];
+                        guesses[selected] = key;
+                        moveCursor(1);
+                        startTimer(); 
+                } else if (key === 'Backspace' || key === 'Delete') {
+                    if (locked) return;
+                    delete guesses[selected];
+                } else if (key === 'Escape') {
+                    selected = null;
+                } else {
+                    return;
+                }
+            }
+            render();
+            if (selected) scrollToCursor();
+        }
     
         puzzleElement.addEventListener('click', e => {
             const cell = e.target.closest('.cell');
@@ -287,6 +358,7 @@
         });
 
         document.addEventListener('keydown', e => {
+<<<<<<< Updated upstream
             if (!selected || solved) return;
             if (e.ctrlKey || e.metaKey || e.altKey) return;
 
@@ -308,6 +380,46 @@
                 return;
             }
             render();
+=======
+            if (e.ctrlKey || e.metaKey || e.altKey) return;
+
+            const key = e.key.length === 1 ? e.key.toUpperCase() : e.key;
+            const isLetter = /^[A-Z]$/.test(key);
+            const isControl = ['ArrowLeft', 'ArrowRight', 'Backspace', 'Delete', 'Escape'].includes(key);
+
+            if (!isLetter && !isControl) return;
+
+            if (key === 'ArrowLeft' || key === 'ArrowRight') e.preventDefault();
+            pressKey(key);
+        });
+
+        const KEY_LAYOUT = [
+            ['Q','W','E','R','T','Y','U','I','O','P'],
+            ['A','S','D','F','G','H','J','K','L'],
+            ['ArrowLeft','Z','X','C','V','B','N','M','ArrowRight','Backspace']
+        ];
+        const KEY_LABEL = { ArrowLeft: '←', ArrowRight: '→', Backspace: '⌫' };
+        const KEY_NAME = { ArrowLeft: 'Previous letter', ArrowRight: 'Next letter', Backspace: 'Delete' };
+
+        KEY_LAYOUT.forEach(keys => {
+            const row = document.createElement('div');
+            row.className = 'kb-row';
+            keys.forEach(key => {
+                const btn = document.createElement('button');
+                btn.className = 'kb-key';
+                btn.dataset.key = key;
+                btn.textContent = KEY_LABEL[key] || key;
+                if(KEY_NAME[key]) btn.setAttribute('aria-label', KEY_NAME[key]);
+                row.appendChild(btn);
+            });
+            keyboardElement.appendChild(row);
+        });
+
+        keyboardElement.addEventListener('mousedown', e => e.preventDefault());
+        keyboardElement.addEventListener('click', e => {
+            const btn = e.target.closest('.kb-key');
+            if (btn) pressKey(btn.dataset.key);
+>>>>>>> Stashed changes
         });
     
     </script>
