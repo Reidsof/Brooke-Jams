@@ -290,7 +290,7 @@
             hintBtn.disabled = solved;
 
             function shareText() { 
-                const hintLine = hints ? `\n${hints} hint${hints === 1 ? '' : 's'}` : '';
+                const hintLine = hints ? `\n${hints} hint${hints === 1 ? '' : 's'}` : `\n 0 hints`;
                 return `Decipherdle #${dayNumber + 1}\n ${formatTime(elapsed)}${hintLine}\n https://brooke-jams.com/decipherdle`; 
             }
 
